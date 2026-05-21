@@ -1,0 +1,169 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>LLM API Pricing Calculator</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+:root{--bg:#fff;--bg2:#f7f7f5;--bg3:#efefec;--text:#1a1a1a;--text2:#666;--text3:#999;--border:#e5e5e3;--accent:#534AB7;--green:#1D9E75;--amber:#BA7517;--coral:#D85A30;--red:#E24B4A}
+@media(prefers-color-scheme:dark){:root{--bg:#1a1a1a;--bg2:#252525;--bg3:#303030;--text:#e8e8e8;--text2:#aaa;--text3:#777;--border:#404040}}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:var(--bg);color:var(--text);line-height:1.6;padding:2rem;max-width:960px;margin:0 auto}
+h1{font-size:22px;font-weight:500;margin-bottom:4px}
+.subtitle{font-size:14px;color:var(--text2);margin-bottom:2rem}
+.controls{display:flex;gap:16px;align-items:center;flex-wrap:wrap;margin-bottom:1.5rem;padding:16px;background:var(--bg2);border-radius:12px}
+.control-group{display:flex;align-items:center;gap:8px}
+.control-group label{font-size:13px;color:var(--text2);white-space:nowrap}
+.control-group input[type=range]{width:160px;accent-color:var(--accent)}
+.control-group .val{font-size:13px;font-weight:500;min-width:55px}
+table{width:100%;border-collapse:collapse;font-size:13px;table-layout:fixed}
+th,td{padding:8px 6px;text-align:right;border-bottom:1px solid var(--border)}
+th:first-child,td:first-child{text-align:left;width:20%}
+th{font-weight:500;font-size:12px;color:var(--text2);background:var(--bg2);position:sticky;top:0;z-index:1}
+th .sub{font-weight:400;font-size:11px;display:block;color:var(--text3)}
+tbody tr:hover{background:var(--bg2)}
+.section-header td{font-size:11px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:.5px;background:var(--bg3);padding:6px;border-bottom:1px solid var(--border)}
+.model-name{font-weight:500}
+.cheap{color:var(--green)}.mid{color:var(--amber)}.expensive{color:var(--coral)}.very-expensive{color:var(--red)}
+.tabs{display:flex;gap:0;margin-bottom:1.5rem;border-bottom:2px solid var(--border)}
+.tab{padding:8px 20px;font-size:14px;cursor:pointer;color:var(--text2);border-bottom:2px solid transparent;margin-bottom:-2px;transition:all .15s}
+.tab:hover{color:var(--text)}
+.tab.active{color:var(--accent);border-bottom-color:var(--accent);font-weight:500}
+.note{font-size:12px;color:var(--text3);margin-top:1.5rem;line-height:1.6;padding:12px;background:var(--bg2);border-radius:8px}
+.note a{color:var(--accent)}
+.note strong{color:var(--text2)}
+footer{margin-top:2rem;padding-top:1rem;border-top:1px solid var(--border);font-size:11px;color:var(--text3);text-align:center}
+footer a{color:var(--accent)}
+.provider-badge{display:inline-block;font-size:10px;padding:2px 6px;border-radius:4px;font-weight:500;margin-left:6px;vertical-align:middle}
+.badge-anthropic{background:#EEEDFE;color:#534AB7}
+.badge-openai{background:#E6F1FB;color:#185FA5}
+@media(prefers-color-scheme:dark){.badge-anthropic{background:#3C3489;color:#CECBF6}.badge-openai{background:#0C447C;color:#B5D4F4}}
+@media(max-width:640px){.controls{flex-direction:column;align-items:flex-start}table{font-size:11px}th,td{padding:6px 4px}.tab{padding:6px 12px;font-size:13px}}
+</style>
+</head>
+<body>
+
+<h1>LLM API pricing calculator</h1>
+<p class="subtitle">Compare cost per request across Anthropic Claude and OpenAI models. Prices in USD, May 2026.</p>
+
+<div class="controls">
+  <div class="control-group">
+    <label>Input tokens:</label>
+    <input type="range" min="500" max="100000" value="2000" step="500" id="inputTok">
+    <span class="val" id="inputTokVal">2,000</span>
+  </div>
+  <div class="control-group">
+    <label>Output tokens:</label>
+    <input type="range" min="200" max="100000" value="1000" step="200" id="outputTok">
+    <span class="val" id="outputTokVal">1,000</span>
+  </div>
+</div>
+
+<div class="tabs">
+  <div class="tab active" data-tab="all">All models</div>
+  <div class="tab" data-tab="anthropic">Anthropic</div>
+  <div class="tab" data-tab="openai">OpenAI</div>
+</div>
+
+<table>
+<thead>
+<tr>
+  <th>Model</th>
+  <th>No thinking<span class="sub">0 think tokens</span></th>
+  <th>Low<span class="sub">~4K think</span></th>
+  <th>Medium<span class="sub">~16K think</span></th>
+  <th>High<span class="sub">~64K think</span></th>
+  <th>Max<span class="sub">~128K think</span></th>
+</tr>
+</thead>
+<tbody id="costBody"></tbody>
+</table>
+
+<div class="note" id="noteArea"></div>
+
+<footer>
+  Data from <a href="https://platform.claude.com/docs/en/about-claude/pricing" target="_blank">Anthropic Pricing</a> and <a href="https://developers.openai.com/api/docs/pricing" target="_blank">OpenAI Pricing</a>.
+  Thinking/reasoning tokens are billed as output tokens. Actual thinking token usage varies per request.
+</footer>
+
+<script>
+const models = [
+  // Anthropic
+  {name:'Haiku 4.5',provider:'anthropic',group:'Anthropic — Haiku',inPrice:1,outPrice:5},
+  {name:'Sonnet 4.5',provider:'anthropic',group:'Anthropic — Sonnet',inPrice:3,outPrice:15},
+  {name:'Sonnet 4.6',provider:'anthropic',group:'Anthropic — Sonnet',inPrice:3,outPrice:15},
+  {name:'Opus 4.5',provider:'anthropic',group:'Anthropic — Opus',inPrice:5,outPrice:25},
+  {name:'Opus 4.6',provider:'anthropic',group:'Anthropic — Opus',inPrice:5,outPrice:25},
+  {name:'Opus 4.7',provider:'anthropic',group:'Anthropic — Opus',inPrice:5,outPrice:25},
+  // OpenAI
+  {name:'GPT-5.4-nano',provider:'openai',group:'OpenAI — GPT-5.4',inPrice:0.20,outPrice:1.25},
+  {name:'GPT-5.4-mini',provider:'openai',group:'OpenAI — GPT-5.4',inPrice:0.75,outPrice:4.50},
+  {name:'GPT-5.4',provider:'openai',group:'OpenAI — GPT-5.4',inPrice:2.50,outPrice:15},
+  {name:'GPT-5.4-pro',provider:'openai',group:'OpenAI — GPT-5.4',inPrice:30,outPrice:180},
+  {name:'GPT-5.5',provider:'openai',group:'OpenAI — GPT-5.5',inPrice:5,outPrice:30},
+  {name:'GPT-5.5-pro',provider:'openai',group:'OpenAI — GPT-5.5',inPrice:30,outPrice:180},
+];
+
+const thinkLevels=[0,4000,16000,64000,128000];
+let activeTab='all';
+
+function colorClass(c){
+  if(c<0.01)return'cheap';
+  if(c<0.05)return'mid';
+  if(c<0.5)return'expensive';
+  return'very-expensive';
+}
+function fmt(c){
+  if(c<0.001)return'<$0.001';
+  if(c<0.01)return'$'+c.toFixed(4);
+  if(c<1)return'$'+c.toFixed(3);
+  if(c<100)return'$'+c.toFixed(2);
+  return'$'+Math.round(c);
+}
+
+function render(){
+  const inTok=parseInt(document.getElementById('inputTok').value);
+  const outTok=parseInt(document.getElementById('outputTok').value);
+  document.getElementById('inputTokVal').textContent=inTok.toLocaleString();
+  document.getElementById('outputTokVal').textContent=outTok.toLocaleString();
+
+  const filtered=activeTab==='all'?models:models.filter(m=>m.provider===activeTab);
+  let html='',lastGroup='';
+  filtered.forEach(m=>{
+    if(m.group!==lastGroup){
+      html+='<tr class="section-header"><td colspan="6">'+m.group+'</td></tr>';
+      lastGroup=m.group;
+    }
+    const badge=m.provider==='anthropic'
+      ?'<span class="provider-badge badge-anthropic">Anthropic</span>'
+      :'<span class="provider-badge badge-openai">OpenAI</span>';
+    html+='<tr><td><span class="model-name">'+m.name+'</span>'+(activeTab==='all'?badge:'')+'</td>';
+    thinkLevels.forEach(t=>{
+      const cost=(inTok/1e6)*m.inPrice+((outTok+t)/1e6)*m.outPrice;
+      html+='<td class="'+colorClass(cost)+'">'+fmt(cost)+'</td>';
+    });
+    html+='</tr>';
+  });
+  document.getElementById('costBody').innerHTML=html;
+
+  document.getElementById('noteArea').innerHTML=
+    '<strong>Cost saving options:</strong> '+
+    'Anthropic Batch API: -50% on all tokens. OpenAI Batch/Flex: -50%. '+
+    'Prompt caching: Anthropic cache hit = 0.1x input, OpenAI cached input ~0.1-0.5x (varies by model). '+
+    'Thinking/reasoning tokens are billed as output tokens for both providers.';
+}
+
+document.querySelectorAll('.tab').forEach(tab=>{
+  tab.addEventListener('click',()=>{
+    document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));
+    tab.classList.add('active');
+    activeTab=tab.dataset.tab;
+    render();
+  });
+});
+document.getElementById('inputTok').addEventListener('input',render);
+document.getElementById('outputTok').addEventListener('input',render);
+render();
+</script>
+</body>
+</html>
